@@ -1,0 +1,195 @@
+
+library(janitor)
+library(tidyverse)
+#library(hrbrthemes)
+
+############### NOW TO DO STATE AND LOCAL DATA #################################################################
+# This code reads in and analyzes state and local employment (SAE) data from the BLS. This is based on the CES survey.
+# Created: 2-15-22
+# Last Edited: 2-22-22
+# Mike Konczal
+
+# Currently this is designed to investigate where the missing state and local workers are in the covid-19 recovery.
+# We want to check if the job losses are disproportionately:
+# - located in states versus local employment,
+# - across states,
+# - and in education versus non-education.
+
+# Initial dive (2-15-22) finds that the jobs missing are broad based across all. Next steps are to present that
+# data better in one clear table, and to compare and contrast with the Great Recession.
+
+############### READ IN AND CLEAN UP STATE AND LOCAL EMPLOYMENT DATA ########################################
+
+# Read in files
+state_industry_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.industry")
+state_data_type_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.data_type")
+supersector_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.supersector")
+state_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.state")
+area_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.area")
+
+sae_series_code <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.series")
+sae_series_code <- sae_series_code %>%
+  clean_names()
+sae_series_code$series_id <- str_trim(sae_series_code$series_id)
+
+sae <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.data.0.Current")
+sae <- sae %>%
+  clean_names()
+sae$value <- as.numeric(sae$value)
+sae$series_id <- str_trim(sae$series_id)
+
+sae <- inner_join(sae, sae_series_code, by = c("series_id"))
+sae <- inner_join(sae, state_codes, by = c("state_code"))
+sae <- inner_join(sae, area_codes, by = c("area_code"))
+sae <- inner_join(sae, supersector_codes, by = c("supersector_code"))
+sae <- inner_join(sae, state_industry_codes, by = c("industry_code"))
+sae <- inner_join(sae, state_data_type_codes, by = c("data_type_code"))
+
+# Remove some columns we won't use, but may in the future.
+sae <- select(sae, -c("footnote_codes.x", "footnote_codes.y", "benchmark_year", "begin_year", "begin_period", "end_year", "end_period"))
+
+############### PART 2: WRITE HELPER FUNCTIONS #################################################################
+
+
+# NEXT TK - INTRODUCE MULTIPLE MONTHS AVERAGE FOR UNADJUSTED
+# sae_change - finds the total and percent change of an employment number in the sae database we created.
+# x - sae database created in Part 1.
+# y - an industry code within the database, sent as character.
+# s - "S" for seasonally adjusted, "U" for unadjusted. Important for sub-categories.
+# year_start, year_end - number with the year.
+# month_term - month, in format "M01" for January.
+sae_change <- function(x, y, s, year_start, year_end, month_term){
+  sae_change_gov <- x %>%
+    filter(industry_code == y) %>%
+    filter(data_type_code == "01") %>%
+    filter(seasonal == s) %>%
+    filter(year == year_start | year == year_end) %>%
+    filter(area_code == "00000") %>%
+    filter(period == month_term) %>%
+    # Get total change and percent change
+    group_by(state_name) %>%
+    arrange(year) %>%
+    mutate(gov_job_loss = value-lag(value)) %>%
+    mutate(gov_job_loss_percent = gov_job_loss/lag(value)) %>%
+    filter(gov_job_loss != "NA") %>%
+    select(state_name, gov_job_loss, gov_job_loss_percent)
+  return(sae_change_gov)
+}
+
+############### PART 3: ANALYSIS ############################################################################
+
+by_total <- sae_change(sae, "90000000", "S", 2019, 2021, "M12")
+by_total2 <- sae_change(sae, "90000000", "S", 2008, 2011, "M12")
+by_total_2019 <- sae_change(sae, "90000000", "S", 2019, 2020, "M12")
+by_total_2020 <- sae_change(sae, "90000000", "S", 2020, 2021, "M12")
+
+by_total$GR <- by_total2$gov_job_loss_percent
+by_total$y2019 <- by_total_2019$gov_job_loss_percent
+by_total$y2020 <- by_total_2020$gov_job_loss_percent
+by_total
+
+backup
+
+by_federal <- sae_change(sae, "90910000", "S", 2019, 2021, "M12")
+by_state <- sae_change(sae, "90920000", "S", 2019, 2021, "M12")
+by_local <- sae_change(sae, "90930000", "S", 2019, 2021, "M12")
+
+hist(by_total$gov_job_loss_percent)
+sum(by_total$gov_job_loss)
+sum(by_federal$gov_job_loss)
+sum(by_state$gov_job_loss)
+sum(by_local$gov_job_loss)
+
+by_total_U <- sae_change(sae, "90000000", "U", 2019, 2021, "M12")
+by_federal_U <- sae_change(sae, "90910000", "U", 2019, 2021, "M12")
+by_state_U <- sae_change(sae, "90920000", "U", 2019, 2021, "M12")
+by_local_U <- sae_change(sae, "90930000", "U", 2019, 2021, "M12")
+by_state_UE <- sae_change(sae, "90921611", "U", 2019, 2021, "M12")
+by_local_UE <- sae_change(sae, "90931611", "U", 2019, 2021, "M12")
+by_state_UNE <- sae_change(sae, "90922000", "U", 2019, 2021, "M12")
+by_local_UNE <- sae_change(sae, "90932000", "U", 2019, 2021, "M12")
+
+sum(by_total_U$gov_job_loss)
+sum(by_federal_U$gov_job_loss)
+sum(by_state_U$gov_job_loss)
+sum(by_local_U$gov_job_loss)
+sum(by_state_UE$gov_job_loss)
+sum(by_local_UE$gov_job_loss)
+sum(by_state_UNE$gov_job_loss)
+sum(by_local_UNE$gov_job_loss)
+
+summary(by_local_UE$gov_job_loss_percent)
+summary(by_local_UNE$gov_job_loss_percent)
+
+summary(by_state_UE$gov_job_loss_percent)
+summary(by_state_UNE$gov_job_loss_percent)
+
+
+#TA DA WE DID IT!
+
+############################ PRESENT THE RESULTS IN A CLEAR TABLE ###############################
+
+
+# JOIN THEM INSTEAD - OR CHECK THAT THEY ACTUALLY MATCH IN STATE NAME
+# Plot
+by_total3 <- by_total %>% 
+  rowwise() %>% 
+  arrange(gov_job_loss_percent) %>% 
+  mutate(state_name=factor(state_name, state_name))
+
+by_total3 <- by_total3 %>%
+  filter(state_name != "Virgin Islands") %>%
+  filter(state_name != "District of Columbia") %>%
+  filter(state_name != "Puerto Rico")
+
+# FIRST GRAPHIC - LOSSES ACROSS STATES
+ggplot(by_total3, aes(x=state_name, y=gov_job_loss_percent)) +
+  geom_segment( aes(x=state_name, xend=state_name, y=0, yend=gov_job_loss_percent), color="grey") +
+  geom_point( color="dark red", size=3) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+# TESTER GRAPHIC - LOSSES ACROSS YEARS
+by_total4 <- by_total3 %>%
+  arrange(y2019)
+
+ggplot(by_total4) +
+  geom_segment( aes(x=state_name, xend=state_name, y=gov_job_loss_percent, yend=y2020), color="grey") +
+  geom_point( aes(x=state_name, y=gov_job_loss_percent), color="dark red", size=3 ) +
+  geom_point( aes(x=state_name, y=y2020), color="dark green", size=3 ) +
+  coord_flip()+
+  theme_light() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+  ) +
+  xlab("") +
+  ylab("Change in State and Local Government Employment")
+
+
+
+# SECOND GRAPHIC - COMPARING NOW TO GREAT RECESSION
+ggplot(by_total3) +
+  geom_segment( aes(x=state_name, xend=state_name, y=gov_job_loss_percent, yend=GR), color="grey") +
+  geom_point( aes(x=state_name, y=gov_job_loss_percent), color="dark red", size=3 ) +
+  geom_point( aes(x=state_name, y=GR), color="dark green", size=3 ) +
+  coord_flip()+
+  theme_light() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+  ) +
+  xlab("") +
+  ylab("Change in State and Local Government Employment")
+
+# THIRD GRAPHIC - STATE VERSUS LOCAL?
+
+
+# FOURTH GRAPHIC - EDUCATION?
