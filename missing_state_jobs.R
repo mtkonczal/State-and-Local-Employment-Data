@@ -1,7 +1,6 @@
 
 library(janitor)
 library(tidyverse)
-#library(hrbrthemes)
 
 ############### NOW TO DO STATE AND LOCAL DATA #################################################################
 # This code reads in and analyzes state and local employment (SAE) data from the BLS. This is based on the CES survey.
