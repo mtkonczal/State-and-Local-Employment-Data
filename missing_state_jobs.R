@@ -7,6 +7,7 @@ library(tidyverse)
 # Created: 2-15-22
 # Last Edited: 2-22-22
 # Mike Konczal
+# Let's see if both changes happen.
 
 # Currently this is designed to investigate where the missing state and local workers are in the covid-19 recovery.
 # We want to check if the job losses are disproportionately:
