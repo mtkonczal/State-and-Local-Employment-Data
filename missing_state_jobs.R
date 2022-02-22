@@ -79,16 +79,14 @@ sae_change <- function(x, y, s, year_start, year_end, month_term){
 ############### PART 3: ANALYSIS ############################################################################
 
 by_total <- sae_change(sae, "90000000", "S", 2019, 2021, "M12")
-by_total2 <- sae_change(sae, "90000000", "S", 2008, 2011, "M12")
+by_total_GR <- sae_change(sae, "90000000", "S", 2008, 2011, "M12")
 by_total_2019 <- sae_change(sae, "90000000", "S", 2019, 2020, "M12")
 by_total_2020 <- sae_change(sae, "90000000", "S", 2020, 2021, "M12")
 
-by_total$GR <- by_total2$gov_job_loss_percent
+by_total$GR <- by_total_GR$gov_job_loss_percent
 by_total$y2019 <- by_total_2019$gov_job_loss_percent
 by_total$y2020 <- by_total_2020$gov_job_loss_percent
 by_total
-
-backup
 
 by_federal <- sae_change(sae, "90910000", "S", 2019, 2021, "M12")
 by_state <- sae_change(sae, "90920000", "S", 2019, 2021, "M12")
@@ -132,18 +130,18 @@ summary(by_state_UNE$gov_job_loss_percent)
 
 # JOIN THEM INSTEAD - OR CHECK THAT THEY ACTUALLY MATCH IN STATE NAME
 # Plot
-by_total3 <- by_total %>% 
+by_total <- by_total %>% 
   rowwise() %>% 
   arrange(gov_job_loss_percent) %>% 
   mutate(state_name=factor(state_name, state_name))
 
-by_total3 <- by_total3 %>%
+by_total <- by_total %>%
   filter(state_name != "Virgin Islands") %>%
   filter(state_name != "District of Columbia") %>%
   filter(state_name != "Puerto Rico")
 
 # FIRST GRAPHIC - LOSSES ACROSS STATES
-ggplot(by_total3, aes(x=state_name, y=gov_job_loss_percent)) +
+p <- ggplot(by_total, aes(x=state_name, y=gov_job_loss_percent)) +
   geom_segment( aes(x=state_name, xend=state_name, y=0, yend=gov_job_loss_percent), color="grey") +
   geom_point( color="dark red", size=3) +
   theme_light() +
@@ -153,12 +151,14 @@ ggplot(by_total3, aes(x=state_name, y=gov_job_loss_percent)) +
     panel.border = element_blank(),
     axis.ticks.y = element_blank()
   )
+p
+ggsave("state_local_loss.png")
 
 # TESTER GRAPHIC - LOSSES ACROSS YEARS
-by_total4 <- by_total3 %>%
+by_total_years <- by_total %>%
   arrange(y2019)
 
-ggplot(by_total4) +
+ggplot(by_total_years) +
   geom_segment( aes(x=state_name, xend=state_name, y=gov_job_loss_percent, yend=y2020), color="grey") +
   geom_point( aes(x=state_name, y=gov_job_loss_percent), color="dark red", size=3 ) +
   geom_point( aes(x=state_name, y=y2020), color="dark green", size=3 ) +
@@ -171,11 +171,11 @@ ggplot(by_total4) +
   ) +
   xlab("") +
   ylab("Change in State and Local Government Employment")
-
+ggsave("losses_by_years.png")
 
 
 # SECOND GRAPHIC - COMPARING NOW TO GREAT RECESSION
-ggplot(by_total3) +
+ggplot(by_total) +
   geom_segment( aes(x=state_name, xend=state_name, y=gov_job_loss_percent, yend=GR), color="grey") +
   geom_point( aes(x=state_name, y=gov_job_loss_percent), color="dark red", size=3 ) +
   geom_point( aes(x=state_name, y=GR), color="dark green", size=3 ) +
@@ -188,6 +188,7 @@ ggplot(by_total3) +
   ) +
   xlab("") +
   ylab("Change in State and Local Government Employment")
+ggsave("losses_vs_Great_Recession.png")
 
 # THIRD GRAPHIC - STATE VERSUS LOCAL?
 
