@@ -1,6 +1,8 @@
+setwd("/Users/mkonczal/Documents/GitHub/State-and-Local-Employment-Data/")
 
 library(janitor)
 library(tidyverse)
+library(ggtext)
 
 ############### NOW TO DO STATE AND LOCAL DATA #################################################################
 # This code reads in and analyzes state and local employment (SAE) data from the BLS. This is based on the CES survey.
@@ -123,9 +125,7 @@ summary(by_state_UE$gov_job_loss_percent)
 summary(by_state_UNE$gov_job_loss_percent)
 
 
-#TA DA WE DID IT!
-
-############################ PRESENT THE RESULTS IN A CLEAR TABLE ###############################
+################ PART 3: GRAPHICS ################################
 
 
 # JOIN THEM INSTEAD - OR CHECK THAT THEY ACTUALLY MATCH IN STATE NAME
@@ -141,53 +141,66 @@ by_total <- by_total %>%
   filter(state_name != "Puerto Rico")
 
 # FIRST GRAPHIC - LOSSES ACROSS STATES
-p <- ggplot(by_total, aes(x=state_name, y=gov_job_loss_percent)) +
+ggplot(by_total, aes(x=state_name, y=gov_job_loss_percent)) +
   geom_segment( aes(x=state_name, xend=state_name, y=0, yend=gov_job_loss_percent), color="grey") +
   geom_point( color="dark red", size=3) +
   theme_light() +
   coord_flip() +
+  xlab("") +
+  ylab("Percent") +
+  ggtitle("Change in State and Local Government Employment, Dec 2019 to Dec 2021") +
   theme(
     panel.grid.major.y = element_blank(),
+    plot.title.position = "plot",
     panel.border = element_blank(),
     axis.ticks.y = element_blank()
   )
-p
 ggsave("state_local_loss.png")
 
-# TESTER GRAPHIC - LOSSES ACROSS YEARS
+# SECOND GRAPHIC - LOSSES ACROSS YEARS
 by_total_years <- by_total %>%
   arrange(y2019)
 
 ggplot(by_total_years) +
   geom_segment( aes(x=state_name, xend=state_name, y=gov_job_loss_percent, yend=y2020), color="grey") +
   geom_point( aes(x=state_name, y=gov_job_loss_percent), color="dark red", size=3 ) +
-  geom_point( aes(x=state_name, y=y2020), color="dark green", size=3 ) +
+  geom_point( aes(x=state_name, y=y2020), color="#228b22", size=3 ) +
   coord_flip()+
   theme_light() +
+  theme(panel.grid.major.x = element_blank(),
+                        plot.title = element_markdown()) +
+  ggtitle("Change in State and Local Government Employment, <span style = 'color:#8b0000;'>2019 to 2020</span> and <span style = 'color:#228b22;'>2020 to 2021</span>, all December") +
   theme(
     panel.grid.major.y = element_blank(),
     panel.border = element_blank(),
+    plot.title.position = "plot",
     axis.ticks.y = element_blank()
   ) +
   xlab("") +
-  ylab("Change in State and Local Government Employment")
+  ylab("Percent") +
+  geom_hline(yintercept=0, linetype="solid", color = "black", alpha=0.5)
 ggsave("losses_by_years.png")
 
 
-# SECOND GRAPHIC - COMPARING NOW TO GREAT RECESSION
+# THIRD GRAPHIC - COMPARING NOW TO GREAT RECESSION
 ggplot(by_total) +
   geom_segment( aes(x=state_name, xend=state_name, y=gov_job_loss_percent, yend=GR), color="grey") +
   geom_point( aes(x=state_name, y=gov_job_loss_percent), color="dark red", size=3 ) +
-  geom_point( aes(x=state_name, y=GR), color="dark green", size=3 ) +
+  geom_point( aes(x=state_name, y=GR), color="#228b22", size=3 ) +
   coord_flip()+
   theme_light() +
+  theme(panel.grid.major.x = element_blank(),
+        plot.title = element_markdown()) +
+  ggtitle("Change in State and Local Government Employment, <span style = 'color:#8b0000;'>2019 to 2021</span> and <span style = 'color:#228b22;'>2008 to 2011</span>, all December") +
   theme(
     panel.grid.major.y = element_blank(),
     panel.border = element_blank(),
+    plot.title.position = "plot",
     axis.ticks.y = element_blank()
   ) +
   xlab("") +
-  ylab("Change in State and Local Government Employment")
+  ylab("Percent") +
+  geom_hline(yintercept=0, linetype="solid", color = "black", alpha=0.5)
 ggsave("losses_vs_Great_Recession.png")
 
 # THIRD GRAPHIC - STATE VERSUS LOCAL?
