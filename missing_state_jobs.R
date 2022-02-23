@@ -7,7 +7,7 @@ library(ggtext)
 ############### NOW TO DO STATE AND LOCAL DATA #################################################################
 # This code reads in and analyzes state and local employment (SAE) data from the BLS. This is based on the CES survey.
 # Created: 2-15-22
-# Last Edited: 2-22-22
+# Last Edited: 2-23-22
 # Mike Konczal
 # Let's see if both changes happen.
 
