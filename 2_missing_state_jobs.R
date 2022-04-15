@@ -7,39 +7,28 @@ library(ggtext)
 
 ##### SET UP SOME THINGS #####
 #source(file = "1_load_clean_sae_data.R")
-
 load("data/sae.RData")
 
-############### PART 2: WRITE HELPER FUNCTIONS #################################################################
-
-
-# NEXT TK - INTRODUCE MULTIPLE MONTHS AVERAGE FOR UNADJUSTED
-# sae_change - finds the total and percent change of an employment number in the sae database we created.
-# x - sae database created in Part 1.
-# y - an industry code within the database, sent as character.
-# s - "S" for seasonally adjusted, "U" for unadjusted. Important for sub-categories.
-# year_start, year_end - number with the year.
-# month_term - month, in format "M01" for January.
-sae_change <- function(x, y, s, year_start, year_end, month_term){
-  sae_change_gov <- x %>%
-    filter(industry_code == y) %>%
-    filter(data_type_code == "01") %>%
-    filter(seasonal == s) %>%
-    filter(year == year_start | year == year_end) %>%
-    filter(area_code == "00000") %>%
-    filter(period == month_term) %>%
-    # Get total change and percent change
-    group_by(state_name) %>%
-    arrange(year) %>%
-    mutate(gov_job_loss = value-lag(value)) %>%
-    mutate(gov_job_loss_percent = gov_job_loss/lag(value)) %>%
-    filter(gov_job_loss != "NA") %>%
-    select(state_name, gov_job_loss, gov_job_loss_percent)
-  return(sae_change_gov)
-}
 
 ############### PART 3: ANALYSIS ############################################################################
 
+sae_S <- sae %>%
+  #Note we filter on supersector code 90 here, for public sector, and seasonally-adjusted, and total state level
+  filter(data_type_code == "01", seasonal == "S", area_code == "00000", supersector_code == "90") %>%
+  group_by(industry_code, state_code) %>%
+  mutate(covid_baseline = value[date=="2020-01-01"]) %>%
+  mutate(pre_GR = value[date=="2008-12-01"]) %>%
+  mutate(post_GR = value[date=="2011-12-01"]) %>%
+  mutate(halfway_covid = value[date=="2021-01-01"]) %>%
+  ungroup() %>%
+  mutate(covid_change = value-covid_baseline, covid_percent_change = covid_change/covid_baseline) %>%
+  mutate(GR_change = pre_GR-post_GR, GR_percent_change = GR_change/pre_GR)
+
+by_total <- sae_S %>% filter(industry_code == "90000000", date == max(date))
+
+
+#BELOW HERE IS BAD CODE NOW - LET'S MAKE IT GOOD WITH THE NEW STUFF NOW!
+#ALL THE INDUSTRY CODES WORK! ALREADY
 by_total <- sae_change(sae, "90000000", "S", 2019, 2022, "M01")
 by_total_GR <- sae_change(sae, "90000000", "S", 2008, 2011, "M12")
 by_total_2019 <- sae_change(sae, "90000000", "S", 2019, 2020, "M12")
@@ -92,7 +81,7 @@ summary(by_state_UNE$gov_job_loss_percent)
 # Plot
 by_total <- by_total %>% 
   rowwise() %>% 
-  arrange(gov_job_loss_percent) %>% 
+  arrange(covid_percent_change) %>% 
   mutate(state_name=factor(state_name, state_name))
 
 by_total <- by_total %>%
@@ -101,8 +90,8 @@ by_total <- by_total %>%
   filter(state_name != "Puerto Rico")
 
 # FIRST GRAPHIC - LOSSES ACROSS STATES
-ggplot(by_total, aes(x=state_name, y=gov_job_loss_percent)) +
-  geom_segment( aes(x=state_name, xend=state_name, y=0, yend=gov_job_loss_percent), color="grey") +
+ggplot(by_total, aes(x=state_name, y=covid_percent_change)) +
+  geom_segment( aes(x=state_name, xend=state_name, y=0, yend=covid_percent_change), color="grey") +
   geom_point( color="dark red", size=3) +
   theme_light() +
   coord_flip() +
@@ -146,9 +135,9 @@ ggsave("graphics/losses_by_years.png")
 
 # THIRD GRAPHIC - COMPARING NOW TO GREAT RECESSION
 ggplot(by_total) +
-  geom_segment( aes(x=state_name, xend=state_name, y=gov_job_loss_percent, yend=GR), color="grey") +
-  geom_point( aes(x=state_name, y=gov_job_loss_percent), color="dark red", size=3 ) +
-  geom_point( aes(x=state_name, y=GR), color="#228b22", size=3 ) +
+  geom_segment( aes(x=state_name, xend=state_name, y=covid_percent_change, yend=GR_percent_change), color="grey") +
+  geom_point( aes(x=state_name, y=covid_percent_change), color="dark red", size=3 ) +
+  geom_point( aes(x=state_name, y=GR_percent_change), color="#228b22", size=3 ) +
   coord_flip()+
   theme_light() +
   theme(panel.grid.major.x = element_blank(),

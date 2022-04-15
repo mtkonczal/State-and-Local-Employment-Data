@@ -46,6 +46,8 @@ sae <- inner_join(sae, area_codes, by = c("area_code"))
 sae <- inner_join(sae, supersector_codes, by = c("supersector_code"))
 sae <- inner_join(sae, state_industry_codes, by = c("industry_code"))
 sae <- inner_join(sae, state_data_type_codes, by = c("data_type_code"))
+sae$date <- paste(substr(sae$period, 2,3), "01", substr(sae$year, 3, 4), sep="/")
+sae$date <- as.Date(sae$date, "%m/%d/%y")
 
 # Remove some columns we won't use, but may in the future.
 sae <- select(sae, -c("footnote_codes.x", "footnote_codes.y", "benchmark_year", "begin_year", "begin_period", "end_year", "end_period"))
