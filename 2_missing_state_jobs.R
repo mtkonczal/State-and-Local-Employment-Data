@@ -3,161 +3,238 @@ setwd("/Users/mkonczal/Documents/GitHub/State-and-Local-Employment-Data/")
 library(janitor)
 library(tidyverse)
 library(ggtext)
+library(scales)
 
 
 ##### SET UP SOME THINGS #####
-#source(file = "1_load_clean_sae_data.R")
-load("data/sae.RData")
+source(file = "1_load_clean_sae_data.R")
 
 
-############### PART 3: ANALYSIS ############################################################################
 
-sae_S <- sae %>%
-  #Note we filter on supersector code 90 here, for public sector, and seasonally-adjusted, and total state level
-  filter(data_type_code == "01", seasonal == "S", area_code == "00000", supersector_code == "90") %>%
-  group_by(industry_code, state_code) %>%
+############### PART 1: DATA ############################################################################
+# This excludes federal jobs, so it's just state and local jobs, under the assumption
+# that the states and localities do not control federal jobs with their budgets.
+# sae_JS is Just States, no federal jobs
+sae_JS <- sae %>%
+  #Note we filter on supersector code 90 here, for public sector, seasonally-adjusted, total state level, and not annual
+  filter(data_type_code == "01", seasonal == "S", area_code == "00000", supersector_code == "90", period != "M13") %>%
+  filter(industry_code %in% c(90920000,90930000)) %>%
+  group_by(date, state_name) %>%
+  summarize(value = sum(value)) %>% ungroup() %>%
+  group_by(state_name) %>%
   mutate(covid_baseline = value[date=="2020-01-01"]) %>%
   mutate(pre_GR = value[date=="2008-12-01"]) %>%
   mutate(post_GR = value[date=="2011-12-01"]) %>%
   mutate(halfway_covid = value[date=="2021-01-01"]) %>%
   ungroup() %>%
   mutate(covid_change = value-covid_baseline, covid_percent_change = covid_change/covid_baseline) %>%
-  mutate(GR_change = pre_GR-post_GR, GR_percent_change = GR_change/pre_GR)
-
-by_total <- sae_S %>% filter(industry_code == "90000000", date == max(date))
-
-
-#BELOW HERE IS BAD CODE NOW - LET'S MAKE IT GOOD WITH THE NEW STUFF NOW!
-#ALL THE INDUSTRY CODES WORK! ALREADY
-by_total <- sae_change(sae, "90000000", "S", 2019, 2022, "M01")
-by_total_GR <- sae_change(sae, "90000000", "S", 2008, 2011, "M12")
-by_total_2019 <- sae_change(sae, "90000000", "S", 2019, 2020, "M12")
-by_total_2020 <- sae_change(sae, "90000000", "S", 2020, 2022, "M01")
-
-by_total$GR <- by_total_GR$gov_job_loss_percent
-by_total$y2019 <- by_total_2019$gov_job_loss_percent
-by_total$y2020 <- by_total_2020$gov_job_loss_percent
-by_total
-
-by_federal <- sae_change(sae, "90910000", "S", 2019, 2021, "M12")
-by_state <- sae_change(sae, "90920000", "S", 2019, 2021, "M12")
-by_local <- sae_change(sae, "90930000", "S", 2019, 2021, "M12")
-
-hist(by_total$gov_job_loss_percent)
-sum(by_total$gov_job_loss)
-sum(by_federal$gov_job_loss)
-sum(by_state$gov_job_loss)
-sum(by_local$gov_job_loss)
-
-by_total_U <- sae_change(sae, "90000000", "U", 2019, 2021, "M12")
-by_federal_U <- sae_change(sae, "90910000", "U", 2019, 2021, "M12")
-by_state_U <- sae_change(sae, "90920000", "U", 2019, 2021, "M12")
-by_local_U <- sae_change(sae, "90930000", "U", 2019, 2021, "M12")
-by_state_UE <- sae_change(sae, "90921611", "U", 2019, 2021, "M12")
-by_local_UE <- sae_change(sae, "90931611", "U", 2019, 2021, "M12")
-by_state_UNE <- sae_change(sae, "90922000", "U", 2019, 2021, "M12")
-by_local_UNE <- sae_change(sae, "90932000", "U", 2019, 2021, "M12")
-
-sum(by_total_U$gov_job_loss)
-sum(by_federal_U$gov_job_loss)
-sum(by_state_U$gov_job_loss)
-sum(by_local_U$gov_job_loss)
-sum(by_state_UE$gov_job_loss)
-sum(by_local_UE$gov_job_loss)
-sum(by_state_UNE$gov_job_loss)
-sum(by_local_UNE$gov_job_loss)
-
-summary(by_local_UE$gov_job_loss_percent)
-summary(by_local_UNE$gov_job_loss_percent)
-
-summary(by_state_UE$gov_job_loss_percent)
-summary(by_state_UNE$gov_job_loss_percent)
-
-
-################ PART 3: GRAPHICS ################################
-
-
-# JOIN THEM INSTEAD - OR CHECK THAT THEY ACTUALLY MATCH IN STATE NAME
-# Plot
-by_total <- by_total %>% 
-  rowwise() %>% 
-  arrange(covid_percent_change) %>% 
-  mutate(state_name=factor(state_name, state_name))
-
-by_total <- by_total %>%
+  mutate(GR_change = post_GR-pre_GR, GR_percent_change = GR_change/pre_GR) %>%
+  # Keeping just states for now
   filter(state_name != "Virgin Islands") %>%
   filter(state_name != "District of Columbia") %>%
   filter(state_name != "Puerto Rico")
 
-# FIRST GRAPHIC - LOSSES ACROSS STATES
-ggplot(by_total, aes(x=state_name, y=covid_percent_change)) +
-  geom_segment( aes(x=state_name, xend=state_name, y=0, yend=covid_percent_change), color="grey") +
-  geom_point( color="dark red", size=3) +
+
+maxdate <- max(sae_JS$date)
+maxdate <- as.character(format(maxdate, format="%B %Y"))
+
+###### GRAPHIC 1 ######
+# This is total losses by state.
+sae_JS %>% filter(date == max(date)) %>%
+  mutate(ordered_change = fct_reorder(state_name, covid_percent_change)) %>%
+  ggplot(aes(x=ordered_change, y=covid_percent_change)) + geom_bar(stat = "identity", fill="skyblue") + coord_flip() + theme_classic() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    plot.title.position = "plot",
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()) +
+  theme(title = element_text(face="plain", size=26), plot.caption = element_text(size=12), axis.text.x=element_text(size=20)) +
+  labs(caption = "Data: BLS, State Employment and Unemployment data; Author's Calculations. Mike Konczal, Roosevelt Institute") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", y="",
+       subtitle=paste("Change in State and Local Government Employment, Jan 2020 to ", maxdate, sep=""),
+       title="State and Local Government Employment Remains Lower Across Most States",
+       caption="Data: BLS, State and Area Employment. Seasonally Adjusted. Author's Calculations. Mike Konczal, Roosevelt Institute")
+  
+ggsave("graphics/sae_1.png", width = 19, height=10.68, dpi="retina")
+
+
+###### GRAPHIC 2 - COMPARING NOW TO GREAT RECESSION ######
+sae_JS %>% filter(date == max(date)) %>%
+  mutate(ordered_change = fct_reorder(state_name, covid_percent_change)) %>%
+  ggplot() +
+  geom_segment( aes(x=ordered_change, xend=ordered_change, y=covid_percent_change, yend=GR_percent_change), color="grey") +
+  geom_point( aes(x=ordered_change, y=covid_percent_change), color="dark red", size=3 ) +
+  geom_point( aes(x=ordered_change, y=GR_percent_change), color="#228b22", size=3 ) +
+  coord_flip()+
   theme_light() +
-  coord_flip() +
+  theme(panel.grid.major.x = element_blank(),
+        plot.title = element_markdown()) +
+  ggtitle("Change in State and Local Government Employment, <span style = 'color:#8b0000;'>2020 to 2022</span> and <span style = 'color:#228b22;'>2009 to 2011</span>, all December") +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.border = element_blank(),
+    plot.title.position = "plot",
+    axis.ticks.y = element_blank()) +
+  theme(title = element_text(face="plain", size=22), plot.caption = element_text(size=12), axis.text.x=element_text(size=20)) +
+  geom_hline(yintercept=0, linetype="solid", color = "black", alpha=0.5) +
+  labs(x="", y="",
+       subtitle="The Great Recession Saw Wide Variance in State and Local Job Losses",
+       caption="Data: BLS, State Employment and Unemployment data. Seasonally Adjusted. Author's Calculations. Mike Konczal, Roosevelt Institute") +
+  scale_y_continuous(labels = scales::percent)
+
+ggsave("graphics/sae_2.png", width = 19, height=10.68, dpi="retina")
+
+
+
+# THIRD GRAPHIC - LOSSES ACROSS YEARS
+sae_JS %>% filter(date == max(date)) %>%
+  mutate(halfway_percent = halfway_covid/covid_baseline-1) %>%
+  mutate(ordered_change = fct_reorder(state_name, halfway_percent)) %>%
+  ggplot() +
+  geom_segment( aes(x=ordered_change, xend=ordered_change, y=covid_percent_change, yend=halfway_percent), color="grey") +
+  geom_point( aes(x=ordered_change, y=covid_percent_change), color="dark red", size=3 ) +
+  geom_point( aes(x=ordered_change, y=halfway_percent), color="#228b22", size=3 ) +
+  coord_flip()+
+  theme_light() +
+  theme(panel.grid.major.x = element_blank(),
+        plot.title = element_markdown()) +
+  ggtitle("Change in State and Local Government Employment, <span style = 'color:#228b22;'>2020 to 2021</span> and <span style = 'color:#8b0000;'>2021 to Current</span>") +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    plot.title.position = "plot",
+    axis.ticks.y = element_blank()
+  ) +
+  theme(title = element_text(face="plain", size=22), plot.caption = element_text(size=12), axis.text.x=element_text(size=20)) +
   xlab("") +
-  ylab("Percent") +
-  ggtitle("Change in State and Local Government Employment, Dec 2019 to Dec 2021") +
+  geom_hline(yintercept=0, linetype="solid", color = "black", alpha=0.5) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(caption = "Data: BLS, State Employment and Unemployment data. Seasonally Adjusted. Author's Calculations. Mike Konczal, Roosevelt Institute.",
+       subtitle = "Recovery is Roughly Constant; Bigger Losses Haven't Seen Faster Job Recoveries")
+
+ggsave("graphics/sae_3.png", width = 19, height=10.68, dpi="retina")
+
+
+#### GRAPHIC 4 - EDUCATION VERSUS NON-EDUCATION ####
+sae %>%
+  filter(period != "M13") %>%
+  # 90931611 is state education employment, 90922000 is local education employment
+  filter(industry_code == "90931611" | industry_code == "90932000" |
+           industry_code == "90921611" | industry_code == "90922000") %>%
+  mutate(is_edu = industry_code == 90921611 | industry_code == 90931611) %>%
+  filter(year == 2022 | (year == 2019 & date < "2019-07-01")) %>%
+  group_by(year, is_edu, state_name) %>% summarize(total_employment = sum(value)) %>%
+  ungroup() %>% group_by(state_name, is_edu) %>%
+  summarize(per_diff = (total_employment[year==2022]-total_employment[year==2019])/total_employment[year==2019]) %>%
+  ungroup() %>%
+  pivot_wider(names_from = is_edu, values_from = per_diff) %>%
+  rename(edu = `TRUE`, non_edu = `FALSE`)%>%
+  ggplot(aes(non_edu, edu)) + geom_point() + theme_classic() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    plot.title.position = "plot",
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()) +
+  theme(title = element_text(face="plain", size=22), plot.caption = element_text(size=12)) +
+  labs(caption = "Data: BLS, State Employment and Unemployment data. Seasonally unadjusted data. Author's Calculations. Mike Konczal, Roosevelt Institute") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(x="Change in Noneducation Employment", y="Change in Education Employment",
+       subtitle=paste("Education is 58 Percent of State and Local Government Jobs, and Responsible for 70 Percent of Losses"),
+       title="State and Local Losses Are Both in Education and Broader, First Six Months of 2019 versus 2022",
+       caption="Data: BLS, State and Area Employment. Seasonally Unadjusted. Author's Calculations. Mike Konczal, Roosevelt Institute") +
+  geom_hline(yintercept=0, linetype="solid", color = "black", alpha=0.5) +
+  geom_vline(xintercept=0, linetype="solid", color = "black", alpha=0.5)
+
+ggsave("graphics/sae_4.png", width = 19, height=10.68, dpi="retina")
+
+
+
+
+
+
+sae %>%
+  filter(period != "M13") %>%
+  # 90931611 is state education employment, 90922000 is local education employment
+  filter(industry_code == "90931611" | industry_code == "90932000" |
+           industry_code == "90921611" | industry_code == "90922000") %>%
+  mutate(is_edu = industry_code == 90921611 | industry_code == 90931611) %>%
+  filter(year == 2022 | (year == 2019 & date < "2019-07-01")) %>%
+  group_by(year, is_edu, state_name) %>% summarize(total_employment = sum(value)) %>%
+  ungroup() %>% group_by(state_name, is_edu) %>%
+  summarize(per_diff = (total_employment[year==2022]-total_employment[year==2019])) %>%
+  pivot_wider(names_from = is_edu, values_from = per_diff) %>%
+  ungroup() %>% summarize(edu = sum(`TRUE`), nonedu = sum(`FALSE`)) %>%
+  summarize(edu/(edu+nonedu))
+
+sae %>%
+  filter(period != "M13") %>%
+  # 90931611 is state education employment, 90922000 is local education employment
+  filter(industry_code == "90931611" | industry_code == "90932000" |
+           industry_code == "90921611" | industry_code == "90922000") %>%
+  mutate(is_edu = industry_code == 90921611 | industry_code == 90931611) %>%
+  filter(date == "2019-06-01") %>%
+  group_by(date, is_edu, state_name) %>% summarize(total_employment = sum(value)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = is_edu, values_from = total_employment) %>%
+  ungroup() %>% summarize(edu = sum(`TRUE`), nonedu = sum(`FALSE`)) %>%
+  summarize(edu/(edu+nonedu))
+
+
+
+#### STANDBY GRAPHIC - A DIFFERENT WAY TO PRESENT GRAPHIC 3 ####
+sae_JS %>% filter(date == max(date)) %>%
+  mutate(halfway_percent = halfway_covid/covid_baseline-1)  %>%
+  mutate(change_since_halfway = GR_percent_change - halfway_percent) %>%
+  select(state_name, change_since_halfway) %>%
+  mutate(ordered_change = fct_reorder(state_name, change_since_halfway)) %>%
+  ggplot(aes(x=ordered_change, y=change_since_halfway)) + geom_bar(stat = "identity", fill="skyblue") + coord_flip() + theme_classic() +
+  xlab("") +
+  ylab("") +
+  ggtitle("Change in State and Local Government Employment, Jan 2020 to Current") +
   theme(
     panel.grid.major.y = element_blank(),
     plot.title.position = "plot",
     panel.border = element_blank(),
     axis.ticks.y = element_blank() 
   ) +
-  labs(caption = "Data: BLS, State Employment and Unemployment data; Author's Calculations. @rortybomb")
-ggsave("graphics/state_local_loss.png")
+  labs(caption = "Data: BLS, State Employment and Unemployment data; Author's Calculations. Mike Konczal, Roosevelt Institute") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", y="",
+       subtitle="Change in State and Local Government Employment, Jan 2020 to Current",
+       title="Decrease in Employment is Across All States",
+       caption="Data: BLS, State Employment and Unemployment data; Author's Calculations. Mike Konczal, Roosevelt Institute")
 
-# SECOND GRAPHIC - LOSSES ACROSS YEARS
-by_total_years <- by_total %>%
-  arrange(y2019)
 
-ggplot(by_total_years) +
-  geom_segment( aes(x=state_name, xend=state_name, y=gov_job_loss_percent, yend=y2020), color="grey") +
-  geom_point( aes(x=state_name, y=gov_job_loss_percent), color="dark red", size=3 ) +
-  geom_point( aes(x=state_name, y=y2020), color="#228b22", size=3 ) +
-  coord_flip()+
-  theme_light() +
-  theme(panel.grid.major.x = element_blank(),
-                        plot.title = element_markdown()) +
-  ggtitle("Change in State and Local Government Employment, <span style = 'color:#8b0000;'>2019 to 2020</span> and <span style = 'color:#228b22;'>2020 to 2021</span>, all December") +
+stateU <- read_csv("data/stateU.csv") %>% rename(state_name = State)
+
+
+a <- sae_JS %>% filter(date==max(date)) %>%
+  select(date, state_name, GR_percent_change) %>%
+  left_join(stateU, by="state_name") 
+b <- lm(GR_percent_change ~ UnemploymentRate, data=a)
+summary(b)
+
+sae_JS %>% filter(date==max(date)) %>%
+  select(date, state_name, GR_percent_change) %>%
+  left_join(stateU, by="state_name") %>%
+  ggplot(aes(UnemploymentRate,GR_percent_change)) + geom_point() + theme_classic() +
   theme(
     panel.grid.major.y = element_blank(),
-    panel.border = element_blank(),
     plot.title.position = "plot",
-    axis.ticks.y = element_blank()
-  ) +
-  xlab("") +
-  ylab("Percent") +
-  geom_hline(yintercept=0, linetype="solid", color = "black", alpha=0.5) +
-  labs(caption = "Data: BLS, State Employment and Unemployment data; Author's Calculations. @rortybomb")
-ggsave("graphics/losses_by_years.png")
-
-
-# THIRD GRAPHIC - COMPARING NOW TO GREAT RECESSION
-ggplot(by_total) +
-  geom_segment( aes(x=state_name, xend=state_name, y=covid_percent_change, yend=GR_percent_change), color="grey") +
-  geom_point( aes(x=state_name, y=covid_percent_change), color="dark red", size=3 ) +
-  geom_point( aes(x=state_name, y=GR_percent_change), color="#228b22", size=3 ) +
-  coord_flip()+
-  theme_light() +
-  theme(panel.grid.major.x = element_blank(),
-        plot.title = element_markdown()) +
-  ggtitle("Change in State and Local Government Employment, <span style = 'color:#8b0000;'>2019 to 2021</span> and <span style = 'color:#228b22;'>2008 to 2011</span>, all December") +
-  theme(
-    panel.grid.major.y = element_blank(),
     panel.border = element_blank(),
-    plot.title.position = "plot",
-    axis.ticks.y = element_blank()
-  ) +
-  xlab("") +
-  ylab("Percent") +
+    axis.ticks.y = element_blank()) +
+  theme(title = element_text(face="plain", size=22), plot.caption = element_text(size=12)) +
+  labs(caption = "Data: BLS, State Employment and Unemployment data. Seasonally unadjusted data. Author's Calculations. Mike Konczal, Roosevelt Institute") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(y="Change in State and Local Public Employment", x="State Leve Unemployment Rate",
+       subtitle=paste("Education is 58 Percent of State and Local Government Jobs, and Responsible for 70 Percent of Losses"),
+       title="State and Local Losses Are Both in Education and Broader, First Six Months of 2019 versus 2022",
+       caption="Data: BLS, State and Area Employment. Seasonally Unadjusted. Author's Calculations. Mike Konczal, Roosevelt Institute") +
   geom_hline(yintercept=0, linetype="solid", color = "black", alpha=0.5) +
-  labs(caption = "Data: BLS, State Employment and Unemployment data; Author's Calculations. @rortybomb")
-ggsave("graphics/losses_vs_Great_Recession.png")
+  geom_vline(xintercept=0, linetype="solid", color = "black", alpha=0.5)
 
-# THIRD GRAPHIC - STATE VERSUS LOCAL?
-
-
-# FOURTH GRAPHIC - EDUCATION?
-
-by_total
+ggsave("graphics/sae_4.png", width = 19, height=10.68, dpi="retina")
