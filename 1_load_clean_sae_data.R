@@ -1,7 +1,9 @@
 setwd("/Users/mkonczal/Documents/GitHub/State-and-Local-Employment-Data/")
-
 library(janitor)
 library(tidyverse)
+library(httr)
+library(data.table)
+library(magrittr)
 library(ggtext)
 
 ############### NOW TO DO STATE AND LOCAL DATA #################################################################
@@ -23,18 +25,32 @@ library(ggtext)
 ############### READ IN AND CLEAN UP STATE AND LOCAL EMPLOYMENT DATA ########################################
 
 # Read in files
-state_industry_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.industry")
-state_data_type_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.data_type")
-supersector_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.supersector")
-state_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.state")
-area_codes <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.area")
+state_industry_codes <- GET("https://download.bls.gov/pub/time.series/sm/sm.industry", user_agent("rortybomb@gmail.com")) %>%
+  content(as = "text") %>%
+  fread()
+state_data_type_codes <- GET("https://download.bls.gov/pub/time.series/sm/sm.data_type", user_agent("rortybomb@gmail.com")) %>%
+  content(as = "text") %>%
+  fread()
+supersector_codes <- GET("https://download.bls.gov/pub/time.series/sm/sm.supersector", user_agent("rortybomb@gmail.com")) %>%
+  content(as = "text") %>%
+  fread()
+state_codes <- GET("https://download.bls.gov/pub/time.series/sm/sm.state", user_agent("rortybomb@gmail.com")) %>%
+  content(as = "text") %>%
+  fread()
+area_codes <- GET("https://download.bls.gov/pub/time.series/sm/sm.area", user_agent("rortybomb@gmail.com")) %>%
+  content(as = "text") %>%
+  fread()
 
-sae_series_code <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.series")
+sae_series_code <- GET("https://download.bls.gov/pub/time.series/sm/sm.series", user_agent("rortybomb@gmail.com")) %>%
+  content(as = "text") %>%
+  fread()
 sae_series_code <- sae_series_code %>%
   clean_names()
 sae_series_code$series_id <- str_trim(sae_series_code$series_id)
 
-sae <- read_delim(file = "https://download.bls.gov/pub/time.series/sm/sm.data.0.Current")
+sae <- GET("https://download.bls.gov/pub/time.series/sm/sm.data.0.Current", user_agent("rortybomb@gmail.com")) %>%
+  content(as = "text") %>%
+  fread()
 sae <- sae %>%
   clean_names()
 sae$value <- as.numeric(sae$value)
@@ -46,8 +62,8 @@ sae <- inner_join(sae, area_codes, by = c("area_code"))
 sae <- inner_join(sae, supersector_codes, by = c("supersector_code"))
 sae <- inner_join(sae, state_industry_codes, by = c("industry_code"))
 sae <- inner_join(sae, state_data_type_codes, by = c("data_type_code"))
-sae$date <- paste(substr(sae$period, 2,3), "01", substr(sae$year, 3, 4), sep="/")
-sae$date <- as.Date(sae$date, "%m/%d/%y")
+sae$date <- paste(substr(sae$period, 2,3), "01", year, sep="/")
+sae$date <- as.Date(sae$date, "%m/%d/%Y")
 
 # Remove some columns we won't use, but may in the future.
 sae <- select(sae, -c("footnote_codes.x", "footnote_codes.y", "benchmark_year", "begin_year", "begin_period", "end_year", "end_period"))

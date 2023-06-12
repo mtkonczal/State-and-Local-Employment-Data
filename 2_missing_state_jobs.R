@@ -17,7 +17,7 @@ source(file = "1_load_clean_sae_data.R")
 # sae_JS is Just States, no federal jobs
 sae_JS <- sae %>%
   #Note we filter on supersector code 90 here, for public sector, seasonally-adjusted, total state level, and not annual
-  filter(data_type_code == "01", seasonal == "S", area_code == "00000", supersector_code == "90", period != "M13") %>%
+  filter(data_type_code == 1, seasonal == "S", area_code == 0, supersector_code == 90, period != "M13") %>%
   filter(industry_code %in% c(90920000,90930000)) %>%
   group_by(date, state_name) %>%
   summarize(value = sum(value)) %>% ungroup() %>%
@@ -25,10 +25,11 @@ sae_JS <- sae %>%
   mutate(covid_baseline = value[date=="2020-01-01"]) %>%
   mutate(pre_GR = value[date=="2008-12-01"]) %>%
   mutate(post_GR = value[date=="2011-12-01"]) %>%
-  mutate(halfway_covid = value[date=="2021-01-01"]) %>%
+  mutate(halfway_covid = value[date=="2022-04-01"]) %>%
   ungroup() %>%
   mutate(covid_change = value-covid_baseline, covid_percent_change = covid_change/covid_baseline) %>%
   mutate(GR_change = post_GR-pre_GR, GR_percent_change = GR_change/pre_GR) %>%
+  mutate(change_2021 = halfway_covid-covid_baseline, change_2021_percent = change_2021/covid_baseline) %>%
   # Keeping just states for now
   filter(state_name != "Virgin Islands") %>%
   filter(state_name != "District of Columbia") %>%
@@ -36,13 +37,15 @@ sae_JS <- sae %>%
 
 
 maxdate <- max(sae_JS$date)
-maxdate <- as.character(format(maxdate, format="%B %Y"))
+maxdate <- as.character(format(maxdate, format="%b %Y"))
 
 ###### GRAPHIC 1 ######
 # This is total losses by state.
 sae_JS %>% filter(date == max(date)) %>%
   mutate(ordered_change = fct_reorder(state_name, covid_percent_change)) %>%
-  ggplot(aes(x=ordered_change, y=covid_percent_change)) + geom_bar(stat = "identity", fill="skyblue") + coord_flip() + theme_classic() +
+  ggplot(aes(x=ordered_change, y=covid_percent_change)) + geom_bar(stat = "identity", fill="skyblue") +
+  geom_point(aes(x=ordered_change, y=change_2021_percent), size=2) +
+  coord_flip() + theme_classic() +
   theme(
     panel.grid.major.y = element_blank(),
     plot.title.position = "plot",
@@ -52,8 +55,8 @@ sae_JS %>% filter(date == max(date)) %>%
   labs(caption = "Data: BLS, State Employment and Unemployment data; Author's Calculations. Mike Konczal, Roosevelt Institute") +
   scale_y_continuous(labels = scales::percent) +
   labs(x="", y="",
-       subtitle=paste("Change in State and Local Government Employment, Jan 2020 to ", maxdate, sep=""),
-       title="State and Local Government Employment Remains Lower Across Most States",
+       subtitle=paste("Change in state and local government employment: blue bar is Jan 2020 to ", maxdate, ", dots are Jan 2020 to Apr 2022.", sep=""),
+       title="State and Local Government Employment is Still Recovering",
        caption="Data: BLS, State and Area Employment. Seasonally Adjusted. Author's Calculations. Mike Konczal, Roosevelt Institute")
   
 ggsave("graphics/sae_1.png", width = 19, height=10.68, dpi="retina")
