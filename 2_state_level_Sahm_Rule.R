@@ -1,11 +1,9 @@
 ###############################################################
-# Code to read in JOLTS data from CPS website and begin analysis.
-# This file reads in and store all the JOLTS monthly jobs data.
+# Code to read in State unemployment data from CPS website and apply the Sahm Rule to the states.
 #
-# Recent fix: added email to calls to work with new BLS protocols.
 #
 # Mike Konczal
-# Last updated 5/1/2023
+# Last updated 7/12/2023
 
 library(hrbrthemes)
 library(janitor)
